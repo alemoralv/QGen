@@ -9,6 +9,12 @@ model: gpt-4.1-mini
 
 documents_dir: documents
 output_dir: outputs
+# PDF text extraction strategy:
+# - md: markdown-first extraction (recommended for better structure)
+# - txt: plain text extraction
+pdf_extract_format: md
+# If markdown extraction fails for a PDF, fallback to plain text extraction.
+pdf_extract_fallback_to_txt: true
 pages_per_segment: 10
 num_questions: 100
 question_instructions: >

@@ -1,6 +1,8 @@
 openai
 python-dotenv
 pypdf
+pymupdf
+pymupdf4llm
 pandas
 openpyxl
 PyYAML

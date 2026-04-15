@@ -41,6 +41,8 @@ class AppConfig:
     include_metadata_columns: bool = False
     retry_attempts: int = 3
     retry_backoff_seconds: float = 2.0
+    pdf_extract_format: str = "md"
+    pdf_extract_fallback_to_txt: bool = True
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AppConfig":
@@ -49,6 +51,7 @@ class AppConfig:
         return cfg
 
     def validate(self) -> None:
+        self.pdf_extract_format = str(self.pdf_extract_format).strip().lower()
         if self.pages_per_segment <= 0:
             raise ValueError("pages_per_segment must be > 0")
         if self.num_questions <= 0:
@@ -61,6 +64,8 @@ class AppConfig:
             raise ValueError("retry_attempts must be > 0")
         if self.retry_backoff_seconds <= 0:
             raise ValueError("retry_backoff_seconds must be > 0")
+        if self.pdf_extract_format not in {"md", "txt"}:
+            raise ValueError("pdf_extract_format must be either 'md' or 'txt'")
         if not str(self.gateway_api_key_env).strip():
             raise ValueError("gateway_api_key_env must be non-empty")
         if not str(self.gateway_base_url_env).strip():

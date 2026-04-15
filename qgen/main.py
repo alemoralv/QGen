@@ -52,7 +52,12 @@ def _supplement_rows_if_needed(
 
 def process_pdf(config: AppConfig, client, pdf_path: Path) -> tuple[Path, Path]:
     LOGGER.info("Processing %s", pdf_path.name)
-    segments = split_pdf_into_segments(pdf_path, config.pages_per_segment)
+    segments = split_pdf_into_segments(
+        pdf_path,
+        config.pages_per_segment,
+        extract_format=config.pdf_extract_format,
+        fallback_to_txt=config.pdf_extract_fallback_to_txt,
+    )
     allocations = allocate_questions_across_segments(segments, config.num_questions)
 
     records: list[QARecord] = []

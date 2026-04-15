@@ -8,7 +8,7 @@ Herramienta que ofrece dos vías de uso:
 ## ¿Qué hace el sistema?
 
 1. **Entrada**: toma todos los archivos `.pdf` que estén en la carpeta configurada (`documents_dir`, normalmente `documents/`).
-2. **Extracción de texto**: usa `pypdf` para sacar el texto de cada página. **No incluye OCR**; si el PDF es escaneado o casi sin texto, habrá poco o ningún contenido útil.
+2. **Extracción de texto**: en CLI usa extracción local en Python, priorizando **markdown estructurado** (`pymupdf4llm`) y con fallback a texto plano (`pypdf`) si se configura. **No incluye OCR**; si el PDF es escaneado o casi sin texto, habrá poco o ningún contenido útil.
 3. **Segmentación**: agrupa las páginas en bloques de `pages_per_segment` páginas consecutivas y arma objetos `Segment` (nombre del PDF, índice del segmento, rango de páginas, texto unido).
 4. **Reparto de preguntas**: el módulo `allocator` reparte `num_questions` entre los segmentos que **sí tienen texto**; la distribución es lo más uniforme posible (parte entera + el sobrante se reparte a los primeros segmentos activos).
 5. **Generación con LLM**: por cada segmento con asignación > 0, se envía un prompt que pide **exactamente** ese número de pares pregunta–respuesta en **JSON** (sin markdown), con las claves `question` y `expectedResponse`. El idioma de salida debe coincidir con el del fragmento de texto.
@@ -44,6 +44,7 @@ La carga de variables desde un archivo `.env` en la raíz del proyecto requiere 
 - Python 3.10 o superior.
 - Llave del gateway (`GW_GATEWAY_API_KEY`) y URL base (`GW_BASE_URL`).
 - PDFs con **texto seleccionable** (no se hace OCR en esta versión).
+- Para extracción markdown en CLI: `pymupdf4llm` / `pymupdf` (incluidos en `requirements.txt`).
 
 ## Instalación
 
@@ -79,6 +80,8 @@ Por defecto, `--config` apunta a `config.yaml` en el directorio actual.
 | `model` | Modelo por defecto si `GW_CHAT_MODEL` no está definido. |
 | `documents_dir` | Carpeta donde están los PDF de entrada. |
 | `output_dir` | Carpeta de salida CSV/XLSX. |
+| `pdf_extract_format` | Modo de extracción local para CLI: `md` (markdown, recomendado) o `txt`. |
+| `pdf_extract_fallback_to_txt` | Si `true`, cuando falla `md` en un PDF concreto, vuelve a extracción `txt`. |
 | `pages_per_segment` | Páginas por segmento (por defecto `10`). |
 | `num_questions` | Total de preguntas objetivo **por PDF completo**. |
 | `question_instructions` | Instrucciones en lenguaje natural para el estilo y foco de las preguntas. |
@@ -126,6 +129,7 @@ La llave `gw_...` **no** se guarda en servidor: se introduce en la UI y se enví
 
 - PDFs basados en imagen u OCR no soportados aquí: el volumen de preguntas puede ser menor que `num_questions` si hay poco texto extraíble.
 - La calidad depende del modelo y del contenido del PDF.
+- Aunque esto evita enviar PDFs binarios al modelo, el costo final sigue dependiendo del volumen de texto extraído enviado al prompt.
 
 ## Licencia y uso
 
