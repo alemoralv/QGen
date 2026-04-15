@@ -17,6 +17,11 @@ __pycache__/
 .venv/
 venv/
 
+# Node / Next.js
+node_modules/
+web/.next/
+web/.vercel/
+
 # Editor / OS
 ~$*
 .DS_Store

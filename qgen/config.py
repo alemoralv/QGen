@@ -21,10 +21,13 @@ def _load_env_file() -> None:
 
 @dataclass(slots=True)
 class AppConfig:
-    openai_api_key_env: str = "OPENAI_API_KEY"
-    google_api_key_env: str = "GOOGLE_API_KEY"
-    google_model: str = "gemini-2.0-flash"
-    model: str = "gpt-5"
+    # Names of the env vars that hold the gateway secrets/config.
+    gateway_api_key_env: str = "GW_GATEWAY_API_KEY"
+    gateway_base_url_env: str = "GW_BASE_URL"
+    gateway_model_env: str = "GW_CHAT_MODEL"
+    # Fallback model id used only when the env var is missing/empty.
+    model: str = "gpt-4.1-mini"
+
     documents_dir: str = "documents"
     output_dir: str = "outputs"
     pages_per_segment: int = 10
@@ -58,23 +61,38 @@ class AppConfig:
             raise ValueError("retry_attempts must be > 0")
         if self.retry_backoff_seconds <= 0:
             raise ValueError("retry_backoff_seconds must be > 0")
-        if not str(self.google_model).strip():
-            raise ValueError("google_model must be non-empty when using Google")
+        if not str(self.gateway_api_key_env).strip():
+            raise ValueError("gateway_api_key_env must be non-empty")
+        if not str(self.gateway_base_url_env).strip():
+            raise ValueError("gateway_base_url_env must be non-empty")
+        if not str(self.gateway_model_env).strip():
+            raise ValueError("gateway_model_env must be non-empty")
 
-    def get_api_key(self) -> str:
-        value = os.getenv(self.openai_api_key_env, "").strip()
+    # --- Gateway accessors -------------------------------------------------
+    def get_gateway_key(self) -> str:
+        value = os.getenv(self.gateway_api_key_env, "").strip()
         if not value:
             raise ValueError(
-                f"Environment variable {self.openai_api_key_env} is missing or empty."
+                f"Environment variable {self.gateway_api_key_env} is missing or empty. "
+                f"Set it in the project .env (expected format: gw_...)."
             )
         return value
 
-    def get_openai_key(self) -> str:
-        return os.getenv(self.openai_api_key_env, "").strip()
+    def get_gateway_base_url(self) -> str:
+        value = os.getenv(self.gateway_base_url_env, "").strip()
+        if not value:
+            raise ValueError(
+                f"Environment variable {self.gateway_base_url_env} is missing or empty. "
+                f"Set it in the project .env."
+            )
+        # Ensure no trailing slash; OpenAI SDK appends its own path suffix.
+        return value.rstrip("/")
 
-    def get_google_key(self) -> str:
-        return os.getenv(self.google_api_key_env, "").strip()
+    def get_gateway_model(self) -> str:
+        value = os.getenv(self.gateway_model_env, "").strip()
+        return value or self.model
 
+    # --- Paths -------------------------------------------------------------
     @property
     def documents_path(self) -> Path:
         return Path(self.documents_dir)
@@ -93,4 +111,3 @@ def load_config(path: str | Path = "config.yaml") -> AppConfig:
     if not isinstance(raw, dict):
         raise ValueError("config.yaml must contain a top-level mapping")
     return AppConfig.from_dict(raw)
-

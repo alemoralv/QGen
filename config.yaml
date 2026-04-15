@@ -1,18 +1,22 @@
-openai_api_key_env: OPENAI_API_KEY
-google_api_key_env: GOOGLE_API_KEY
-google_model: gemini-2.0-flash
-model: gpt-5-mini
+# Environment variable names (values live in .env, never in this file)
+gateway_api_key_env: GW_GATEWAY_API_KEY
+gateway_base_url_env: GW_BASE_URL
+gateway_model_env: GW_CHAT_MODEL
+
+# Fallback model used only if GW_CHAT_MODEL is not set in .env.
+# The env var GW_CHAT_MODEL always takes priority.
+model: gpt-4.1-mini
+
 documents_dir: documents
 output_dir: outputs
 pages_per_segment: 10
-num_questions: 20
+num_questions: 100
 question_instructions: >
-  Generate practical comprehension questions that cover key facts, definitions,
-  procedures, and important details from the text.
+  Genera preguntas prácticas de comprensión que cubran hechos clave, definiciones,
+  procedimientos y detalles importantes del texto.
 difficulty: mixed
 temperature: 0.2
 max_output_tokens: 4000
 include_metadata_columns: false
 retry_attempts: 3
 retry_backoff_seconds: 2.0
-

@@ -1,6 +1,9 @@
 # QGen — Generador de preguntas desde PDF
 
-Herramienta en Python que **lee PDFs con texto extraíble**, los divide en **segmentos de N páginas** (por defecto 10) y llama a un modelo de lenguaje (**OpenAI** por defecto, o **Google Gemini** si no hay clave de OpenAI) para producir un **conjunto de preguntas y respuestas esperadas** alineado con el contenido de cada documento.
+Herramienta que ofrece dos vías de uso:
+
+- **CLI Python**: lee PDFs con texto extraíble, los divide en segmentos y genera preguntas/respuestas vía gateway LLM.
+- **Web UI (Next.js)**: flujo visual por pasos para cargar PDFs, configurar generación, ver progreso en streaming y exportar CSV/XLSX.
 
 ## ¿Qué hace el sistema?
 
@@ -24,17 +27,22 @@ Opcionalmente (si `include_metadata_columns: true` en `config.yaml`):
 
 - `sourcePdf`, `segmentIndex`, `pageStart`, `pageEnd`
 
-### Proveedores de modelo
+### Proveedor de modelo
 
-- **OpenAI**: se usa si la variable de entorno de la clave OpenAI (por defecto `OPENAI_API_KEY`) **no está vacía**. Emplea la API **Responses** (`responses.create`) con el modelo indicado en `model`. Si el modelo **no acepta** el parámetro `temperature`, el código lo omite automáticamente en un segundo intento.
-- **Google Gemini**: se usa si **no** hay clave OpenAI pero sí la de Google (por defecto `GOOGLE_API_KEY`), con el modelo `google_model` (por ejemplo `gemini-2.0-flash`).
+Todas las llamadas al LLM pasan por un **gateway compatible con OpenAI** (Azure Container Apps). El cliente usa el SDK oficial de OpenAI pero apuntando al `base_url` del gateway, y envía las peticiones al endpoint `chat/completions`.
+
+- `GW_BASE_URL`: URL pública del gateway (sin barra final).
+- `GW_CHAT_MODEL`: id del modelo servido por el gateway (p. ej. `gpt-4.1-mini`).
+- `GW_GATEWAY_API_KEY`: tu llave personal (usualmente empieza con `gw_`).
+
+Si el modelo **no acepta** el parámetro `temperature`, el código lo omite automáticamente en un segundo intento.
 
 La carga de variables desde un archivo `.env` en la raíz del proyecto requiere `python-dotenv` (ya está en `requirements.txt`).
 
 ## Requisitos
 
 - Python 3.10 o superior.
-- Al menos una clave: OpenAI **o** Google Gemini.
+- Llave del gateway (`GW_GATEWAY_API_KEY`) y URL base (`GW_BASE_URL`).
 - PDFs con **texto seleccionable** (no se hace OCR en esta versión).
 
 ## Instalación
@@ -47,7 +55,7 @@ pip install -r requirements.txt
 ## Configuración de claves (sin subirlas al repositorio)
 
 1. Copia `.env.example` a `.env` en la raíz del proyecto.
-2. Rellena `OPENAI_API_KEY` y/o `GOOGLE_API_KEY` según el proveedor que quieras usar.
+2. Rellena `GW_BASE_URL`, `GW_CHAT_MODEL` y `GW_GATEWAY_API_KEY` (tu llave `gw_...`).
 
 **No subas** `.env` ni PDFs confidenciales: en este repositorio, `documents/` y `.env` están en `.gitignore`.
 
@@ -65,17 +73,17 @@ Por defecto, `--config` apunta a `config.yaml` en el directorio actual.
 
 | Clave | Descripción |
 |--------|-------------|
-| `openai_api_key_env` | Nombre de la variable de entorno para la clave OpenAI (por defecto `OPENAI_API_KEY`). |
-| `google_api_key_env` | Nombre de la variable para Gemini (por defecto `GOOGLE_API_KEY`). |
-| `google_model` | ID del modelo de Gemini cuando se usa Google. |
-| `model` | ID del modelo de OpenAI cuando se usa OpenAI. |
+| `gateway_api_key_env` | Nombre de la variable de entorno con la llave del gateway (por defecto `GW_GATEWAY_API_KEY`). |
+| `gateway_base_url_env` | Nombre de la variable con la URL base del gateway (por defecto `GW_BASE_URL`). |
+| `gateway_model_env` | Nombre de la variable con el id del modelo (por defecto `GW_CHAT_MODEL`). |
+| `model` | Modelo por defecto si `GW_CHAT_MODEL` no está definido. |
 | `documents_dir` | Carpeta donde están los PDF de entrada. |
 | `output_dir` | Carpeta de salida CSV/XLSX. |
 | `pages_per_segment` | Páginas por segmento (por defecto `10`). |
 | `num_questions` | Total de preguntas objetivo **por PDF completo**. |
 | `question_instructions` | Instrucciones en lenguaje natural para el estilo y foco de las preguntas. |
 | `difficulty` | `basic`, `mixed` o `advanced`. |
-| `temperature` | Temperatura del modelo (0–2; OpenAI puede ignorarla en algunos modelos). |
+| `temperature` | Temperatura del modelo (0–2; algunos modelos del gateway pueden ignorarla). |
 | `max_output_tokens` | Límite de tokens de salida. |
 | `include_metadata_columns` | `true` para añadir columnas de trazabilidad al CSV/XLSX. |
 | `retry_attempts` | Número de reintentos por segmento. |
@@ -87,7 +95,7 @@ Por defecto, `--config` apunta a `config.yaml` en el directorio actual.
 - `config.py`: carga YAML, validación y rutas; integración con `.env`.
 - `pdf_splitter.py`: extracción de texto por página y construcción de `Segment`.
 - `allocator.py`: reparto de `num_questions` entre segmentos con texto.
-- `question_generator.py`: prompt, clientes OpenAI/Gemini, parseo JSON y reintentos.
+- `question_generator.py`: prompt, cliente gateway (OpenAI-compatible), parseo JSON y reintentos.
 - `exporter.py`: escritura con pandas a CSV y Excel.
 - `models.py`: dataclasses `Segment` y `QARecord`.
 
@@ -97,6 +105,23 @@ Por defecto, `--config` apunta a `config.yaml` en el directorio actual.
 pytest -q
 ```
 
+## Web UI (Next.js + Vercel)
+
+La UI vive en `web/` y usa la ruta `web/app/api/generate/route.ts` para procesar PDFs en streaming (NDJSON).
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Variables para `web/.env.local` (desarrollo) y Vercel Project Env (producción):
+
+- `GW_BASE_URL` (requerido en servidor)
+- `GW_CHAT_MODEL` (opcional, default `gpt-4.1-mini`)
+
+La llave `gw_...` **no** se guarda en servidor: se introduce en la UI y se envía por request header `x-gw-api-key`.
+
 ## Limitaciones
 
 - PDFs basados en imagen u OCR no soportados aquí: el volumen de preguntas puede ser menor que `num_questions` si hay poco texto extraíble.
@@ -104,4 +129,4 @@ pytest -q
 
 ## Licencia y uso
 
-Revisa las condiciones de uso de las APIs de OpenAI y Google antes de procesar documentos con datos personales o confidenciales.
+Revisa las condiciones de uso de tu gateway/modelo antes de procesar documentos con datos personales o confidenciales.

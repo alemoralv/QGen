@@ -12,8 +12,8 @@ from qgen.config import AppConfig
 from qgen.models import QARecord, Segment
 
 
-def _openai_rejects_temperature_param(exc: BaseException) -> bool:
-    """True when the API indicates `temperature` is not valid for this model."""
+def _gateway_rejects_temperature_param(exc: BaseException) -> bool:
+    """True when the gateway indicates `temperature` is not valid for this model."""
     status = getattr(exc, "status_code", None)
     if status != 400:
         return False
@@ -31,6 +31,10 @@ def _openai_rejects_temperature_param(exc: BaseException) -> bool:
     return "temperature" in text and (
         "unsupported" in text or "not supported" in text
     )
+
+
+# Backwards-compat alias (tests import the old name).
+_openai_rejects_temperature_param = _gateway_rejects_temperature_param
 
 
 def _build_prompt(
@@ -98,85 +102,58 @@ class CompletionClient(ABC):
         pass
 
 
-class _OpenAIBackend(CompletionClient):
-    def __init__(self, client: OpenAI, config: AppConfig) -> None:
+class _GatewayBackend(CompletionClient):
+    """Calls the LLM gateway via an OpenAI-compatible Chat Completions endpoint.
+
+    The OpenAI SDK is reused with a custom ``base_url`` so the requests are
+    routed through the gateway. This keeps the call surface portable and lets
+    us swap providers behind the gateway without touching this code.
+    """
+
+    def __init__(self, client: OpenAI, config: AppConfig, model: str) -> None:
         self._client = client
         self._config = config
+        self._model = model
         self._omit_temperature: bool = False
 
-    def _responses_create(self, prompt: str, *, include_temperature: bool) -> Any:
+    def _chat_create(self, prompt: str, *, include_temperature: bool) -> Any:
         kwargs: dict[str, Any] = {
-            "model": self._config.model,
-            "input": prompt,
-            "max_output_tokens": self._config.max_output_tokens,
+            "model": self._model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": self._config.max_output_tokens,
         }
         if include_temperature:
             kwargs["temperature"] = self._config.temperature
-        return self._client.responses.create(**kwargs)
+        return self._client.chat.completions.create(**kwargs)
 
     def complete(self, prompt: str) -> str:
         include_temp = not self._omit_temperature
         try:
-            response = self._responses_create(prompt, include_temperature=include_temp)
-            return (response.output_text or "").strip()
+            response = self._chat_create(prompt, include_temperature=include_temp)
         except Exception as exc:
-            if include_temp and _openai_rejects_temperature_param(exc):
+            if include_temp and _gateway_rejects_temperature_param(exc):
                 self._omit_temperature = True
-                response = self._responses_create(
-                    prompt, include_temperature=False
-                )
-                return (response.output_text or "").strip()
-            raise
-
-
-class _GoogleBackend(CompletionClient):
-    def __init__(self, client: Any, config: AppConfig) -> None:
-        self._client = client
-        self._config = config
-
-    def complete(self, prompt: str) -> str:
-        from google.genai import types
-
-        response = self._client.models.generate_content(
-            model=self._config.google_model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=self._config.temperature,
-                max_output_tokens=self._config.max_output_tokens,
-            ),
-        )
-        text = getattr(response, "text", None)
-        if text:
-            return str(text).strip()
-        return ""
+                response = self._chat_create(prompt, include_temperature=False)
+            else:
+                raise
+        try:
+            content = response.choices[0].message.content
+        except (AttributeError, IndexError, TypeError):
+            content = ""
+        return (content or "").strip()
 
 
 def build_llm_client(config: AppConfig) -> CompletionClient:
-    openai_key = config.get_openai_key()
-    if openai_key:
-        return _OpenAIBackend(OpenAI(api_key=openai_key), config)
+    """Build the gateway-backed LLM client.
 
-    google_key = config.get_google_key()
-    if google_key:
-        try:
-            from google import genai
-        except ImportError as exc:  # pragma: no cover
-            raise ImportError(
-                "Google provider selected but google-genai is not installed. "
-                "Run: pip install google-genai"
-            ) from exc
-        return _GoogleBackend(genai.Client(api_key=google_key), config)
-
-    raise ValueError(
-        f"No API key found. Set {config.openai_api_key_env} for OpenAI, or set "
-        f"{config.google_api_key_env} for Google Gemini when OpenAI is not used. "
-        "You can define these in a .env file in the project root."
-    )
-
-
-def build_openai_client(config: AppConfig) -> OpenAI:
-    """Build an OpenAI client (unchanged contract: requires OpenAI key in env)."""
-    return OpenAI(api_key=config.get_api_key())
+    Requires ``GW_GATEWAY_API_KEY`` and ``GW_BASE_URL`` (or whatever names were
+    configured in ``config.yaml``) to be set in the environment / .env file.
+    """
+    api_key = config.get_gateway_key()
+    base_url = config.get_gateway_base_url()
+    model = config.get_gateway_model()
+    client = OpenAI(api_key=api_key, base_url=base_url)
+    return _GatewayBackend(client, config, model)
 
 
 def generate_qa_for_segment(

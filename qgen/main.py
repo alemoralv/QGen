@@ -95,10 +95,11 @@ def run(config_path: str) -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
     client = build_llm_client(config)
-    if config.get_openai_key():
-        LOGGER.info("LLM provider: OpenAI (%s)", config.model)
-    else:
-        LOGGER.info("LLM provider: Google Gemini (%s)", config.google_model)
+    LOGGER.info(
+        "LLM provider: Gateway at %s (model=%s)",
+        config.get_gateway_base_url(),
+        config.get_gateway_model(),
+    )
     pdf_files = _collect_pdf_files(config.documents_path)
     if not pdf_files:
         LOGGER.info("No PDFs found in %s", config.documents_path)
