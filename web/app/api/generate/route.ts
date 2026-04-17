@@ -6,7 +6,8 @@ import { QuestionGenerator } from "@/lib/questionGenerator";
 import type { GenerationConfig, Segment, StreamEvent } from "@/lib/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 300; // seconds, Vercel Pro default ceiling
+// 60s = Vercel Hobby limit. Upgrade to Pro and bump to 300 for large PDFs.
+export const maxDuration = 60;
 
 function jsonLine(event: StreamEvent): Uint8Array {
   return new TextEncoder().encode(`${JSON.stringify(event)}\n`);
